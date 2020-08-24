@@ -63,7 +63,12 @@ async function connect() {
   });
 
   socket.on('connect_error', (error) => {
-    console.error('could not connect to %s%s (%s)', serverUrl, opts.path, error.message);
+    console.error(
+      'could not connect to %s%s (%s)',
+      serverUrl,
+      opts.path,
+      error.message
+    );
     $txtConnection.innerHTML = 'Connection failed';
     $btnConnect.disabled = false;
   });
@@ -85,7 +90,7 @@ async function loadDevice(routerRtpCapabilities) {
 }
 
 async function publish(e) {
-  const isWebcam = (e.target.id === 'btn_webcam');
+  const isWebcam = e.target.id === 'btn_webcam';
   $txtPublish = isWebcam ? $txtWebcam : $txtScreen;
 
   const data = await socket.request('createProducerTransport', {
@@ -99,23 +104,29 @@ async function publish(e) {
 
   const transport = device.createSendTransport(data);
   transport.on('connect', async ({ dtlsParameters }, callback, errback) => {
-    socket.request('connectProducerTransport', { dtlsParameters })
-      .then(callback)
+    socket
+      .request('connectProducerTransport', { dtlsParameters })
+      .then(() => {
+        socket.emit('produce', async());
+      })
       .catch(errback);
   });
 
-  transport.on('produce', async ({ kind, rtpParameters }, callback, errback) => {
-    try {
-      const { id } = await socket.request('produce', {
-        transportId: transport.id,
-        kind,
-        rtpParameters,
-      });
-      callback({ id });
-    } catch (err) {
-      errback(err);
+  transport.on(
+    'produce',
+    async ({ kind, rtpParameters }, callback, errback) => {
+      try {
+        const { id } = await socket.request('produce', {
+          transportId: transport.id,
+          kind,
+          rtpParameters,
+        });
+        callback({ id });
+      } catch (err) {
+        errback(err);
+      }
     }
-  });
+  );
 
   transport.on('connectionstatechange', (state) => {
     switch (state) {
@@ -123,23 +134,24 @@ async function publish(e) {
         $txtPublish.innerHTML = 'publishing...';
         $fsPublish.disabled = true;
         $fsSubscribe.disabled = true;
-      break;
+        break;
 
       case 'connected':
         document.querySelector('#local_video').srcObject = stream;
         $txtPublish.innerHTML = 'published';
         $fsPublish.disabled = true;
         $fsSubscribe.disabled = false;
-      break;
+        break;
 
       case 'failed':
         transport.close();
         $txtPublish.innerHTML = 'failed';
         $fsPublish.disabled = false;
         $fsSubscribe.disabled = true;
-      break;
+        break;
 
-      default: break;
+      default:
+        break;
     }
   });
 
@@ -155,10 +167,10 @@ async function publish(e) {
         { maxBitrate: 900000 },
       ];
       params.codecOptions = {
-        videoGoogleStartBitrate : 1000
+        videoGoogleStartBitrate: 1000,
       };
     }
-    producer = await transport.produce(params);
+    producer = await transport.emit('produce', params);
   } catch (err) {
     $txtPublish.innerHTML = 'failed';
   }
@@ -172,9 +184,10 @@ async function getUserMedia(transport, isWebcam) {
 
   let stream;
   try {
-    stream = isWebcam ?
-      await navigator.mediaDevices.getUserMedia({ video: true }) :
-      await navigator.mediaDevices.getDisplayMedia({ video: true });
+    stream =
+      1 === 0
+        ? await navigator.mediaDevices.getUserMedia({ video: true })
+        : await navigator.mediaDevices.getDisplayMedia({ video: true });
   } catch (err) {
     console.error('getUserMedia() failed:', err.message);
     throw err;
@@ -193,10 +206,11 @@ async function subscribe() {
 
   const transport = device.createRecvTransport(data);
   transport.on('connect', ({ dtlsParameters }, callback, errback) => {
-    socket.request('connectConsumerTransport', {
-      transportId: transport.id,
-      dtlsParameters
-    })
+    socket
+      .request('connectConsumerTransport', {
+        transportId: transport.id,
+        dtlsParameters,
+      })
       .then(callback)
       .catch(errback);
   });
@@ -221,7 +235,8 @@ async function subscribe() {
         $fsSubscribe.disabled = false;
         break;
 
-      default: break;
+      default:
+        break;
     }
   });
 
@@ -231,12 +246,7 @@ async function subscribe() {
 async function consume(transport) {
   const { rtpCapabilities } = device;
   const data = await socket.request('consume', { rtpCapabilities });
-  const {
-    producerId,
-    id,
-    kind,
-    rtpParameters,
-  } = data;
+  const { producerId, id, kind, rtpParameters } = data;
 
   let codecOptions = {};
   const consumer = await transport.consume({

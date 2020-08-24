@@ -74,13 +74,7 @@ async function runWebServer() {
 }
 
 async function runSocketServer() {
-  socketServer = socketIO(webServer, {
-    serveClient: false,
-    path: '/server',
-    log: false,
-  });
-
-  socketServer.on('connection', (socket) => {
+  socketServer = Server.on('connection', (socket) => {
     console.log('client connected');
 
     // inform the client about existence of producer
@@ -129,11 +123,11 @@ async function runSocketServer() {
 
     socket.on('connectConsumerTransport', async (data, callback) => {
       await consumerTransport.connect({ dtlsParameters: data.dtlsParameters });
-      callback();
+      callback('success');
     });
 
     socket.on('produce', async (data, callback) => {
-      const {kind, rtpParameters} = data;
+      const { kind, rtpParameters } = data;
       producer = await producerTransport.produce({ kind, rtpParameters });
       callback({ id: producer.id });
 
@@ -161,7 +155,10 @@ async function runMediasoupWorker() {
   });
 
   worker.on('died', () => {
-    console.error('mediasoup worker died, exiting in 2 seconds... [pid:%d]', worker.pid);
+    console.error(
+      'mediasoup worker died, exiting in 2 seconds... [pid:%d]',
+      worker.pid
+    );
     setTimeout(() => process.exit(1), 2000);
   });
 
@@ -172,7 +169,7 @@ async function runMediasoupWorker() {
 async function createWebRtcTransport() {
   const {
     maxIncomingBitrate,
-    initialAvailableOutgoingBitrate
+    initialAvailableOutgoingBitrate,
   } = config.mediasoup.webRtcTransport;
 
   const transport = await mediasoupRouter.createWebRtcTransport({
@@ -185,8 +182,7 @@ async function createWebRtcTransport() {
   if (maxIncomingBitrate) {
     try {
       await transport.setMaxIncomingBitrate(maxIncomingBitrate);
-    } catch (error) {
-    }
+    } catch (error) {}
   }
   return {
     transport,
@@ -194,14 +190,14 @@ async function createWebRtcTransport() {
       id: transport.id,
       iceParameters: transport.iceParameters,
       iceCandidates: transport.iceCandidates,
-      dtlsParameters: transport.dtlsParameters
+      dtlsParameters: transport.dtlsParameters,
     },
   };
 }
 
 async function createConsumer(producer, rtpCapabilities) {
-  if (!mediasoupRouter.canConsume(
-    {
+  if (
+    !mediasoupRouter.canConsume({
       producerId: producer.id,
       rtpCapabilities,
     })
@@ -230,6 +226,6 @@ async function createConsumer(producer, rtpCapabilities) {
     kind: consumer.kind,
     rtpParameters: consumer.rtpParameters,
     type: consumer.type,
-    producerPaused: consumer.producerPaused
+    producerPaused: consumer.producerPaused,
   };
 }
